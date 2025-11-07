@@ -1,0 +1,108 @@
+# 操作系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE 和编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.history/
+
+# 环境变量文件
+.env
+.env.local
+.env.development.local
+.env.production.local
+.env.test.local
+.envrc
+*.env
+
+# 依赖目录
+node_modules/
+jspm_packages/
+bower_components/
+
+# 构建输出
+build/
+dist/
+*.tsbuildinfo
+coverage/
+.nyc_output/
+dev-dist/
+html/
+meta*.json
+
+# 日志文件
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# 运行时数据
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# 测试覆盖率
+coverage/
+*.lcov
+.nyc_output/
+
+# 缓存目录
+.cache/
+.npm/
+.eslintcache
+.yarn/
+.yarn-integrity
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+.fusebox/
+
+# 打包文件
+*.tgz
+*.tar.gz
+
+# 其他
+.vercel/
+.firebase/
+firebase/
+*.log
+package-lock.json
+pnpm-lock.yaml
+
+# Excalidraw 特定
+packages/excalidraw/types/
+firebase/
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+.dockerignore
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+

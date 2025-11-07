@@ -1,0 +1,94 @@
+version: "3.8"
+
+services:
+  # Nginx 反向代理
+  nginx:
+    image: 018559536544.dkr.ecr.cn-north-1.amazonaws.com.cn/nginx:latest
+    container_name: excalidraw-nginx
+    ports:
+      - "1105:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - excalidraw
+      - excalidraw-storage-backend
+      - excalidraw-room
+    restart: unless-stopped
+    networks:
+      - excalidraw-network
+
+  # Excalidraw 前端
+  excalidraw:
+    image: 018559536544.dkr.ecr.cn-north-1.amazonaws.com.cn/excalidraw/excalidraw:latest
+    container_name: excalidraw-frontend
+    restart: unless-stopped
+    networks:
+      - excalidraw-network
+
+  # Excalidraw Storage Backend
+  excalidraw-storage-backend:
+    image: 018559536544.dkr.ecr.cn-north-1.amazonaws.com.cn/excalidraw/excalidraw-storage-backend:latest
+    container_name: excalidraw-storage-backend
+    restart: unless-stopped
+    environment:
+      - PORT=8080
+      - GLOBAL_PREFIX=/api/v2
+      - STORAGE_URI=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postgres}
+      - LOG_LEVEL=log
+      - BODY_LIMIT=500mb
+    depends_on:
+      - postgres
+    networks:
+      - excalidraw-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/api/v2/scenes/', (r) => process.exit(r.statusCode === 404 || r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Excalidraw Room (Socket.IO 服务器)
+  excalidraw-room:
+    image: 018559536544.dkr.ecr.cn-north-1.amazonaws.com.cn/excalidraw/excalidraw-room:latest
+    container_name: excalidraw-room
+    ports:
+      - "1106:80"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=80
+      - CORS_ORIGIN=*
+    networks:
+      - excalidraw-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:80/', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL 数据库
+  postgres:
+    image: 018559536544.dkr.ecr.cn-north-1.amazonaws.com.cn/fuluo/postgres:latest-amd64
+    container_name: excalidraw-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - excalidraw-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  excalidraw-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+
