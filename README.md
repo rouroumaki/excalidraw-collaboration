@@ -316,3 +316,50 @@ docker-compose ps postgres
 
 如有问题，请提交 Issue 或联系维护者。
 
+## 上传到 GitHub
+
+### 创建 GitHub 仓库
+
+1. 登录 GitHub，点击右上角的 "+" 按钮，选择 "New repository"
+2. 仓库名称填写：`excalidraw-collaboration`
+3. 设置为 Public（公开仓库）
+4. **不要**初始化 README、.gitignore 或 license（因为我们已经有了）
+5. 点击 "Create repository"
+
+### 推送代码到 GitHub
+
+在项目根目录执行以下命令：
+
+```bash
+# 添加远程仓库（将 YOUR_USERNAME 替换为你的 GitHub 用户名）
+git remote add origin https://github.com/YOUR_USERNAME/excalidraw-collaboration.git
+
+# 或者使用 SSH（如果你配置了 SSH 密钥）
+# git remote add origin git@github.com:YOUR_USERNAME/excalidraw-collaboration.git
+
+# 推送代码到 GitHub
+git branch -M main
+git push -u origin main
+```
+
+### 后续更新
+
+当你对代码进行修改后，可以使用以下命令推送更新：
+
+```bash
+# 添加所有更改
+git add .
+
+# 提交更改
+git commit -m "你的提交信息"
+
+# 推送到 GitHub
+git push
+```
+
+### 注意事项
+
+- 确保 `.gitignore` 文件已正确配置，避免提交敏感信息（如 `.env` 文件、`node_modules` 等）
+- 如果仓库中已经有一些文件，可能需要先执行 `git pull` 合并远程更改
+- 如果遇到推送冲突，请先解决冲突后再推送
+
