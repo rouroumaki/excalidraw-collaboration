@@ -115,26 +115,55 @@ export const saveToHttpStorage = async (
   appState: AppState,
 ) => {
   const { roomId, roomKey, socket } = portal;
-  if (
-    // if no room exists, consider the room saved because there's nothing we can
-    // do at this point
-    !roomId ||
-    !roomKey ||
-    !socket ||
-    isSavedToHttpStorage(portal, elements)
-  ) {
+
+  // 检查基本条件
+  if (!roomId || !roomKey || !socket) {
+    // eslint-disable-next-line no-console
+    console.warn("[saveToHttpStorage] Missing required params:", {
+      hasRoomId: !!roomId,
+      hasRoomKey: !!roomKey,
+      hasSocket: !!socket,
+    });
+    return false;
+  }
+
+  // 检查是否已保存
+  const isSaved = isSavedToHttpStorage(portal, elements);
+  if (isSaved) {
+    const cachedVersion = httpStorageSceneVersionCache.get(socket);
+    const currentVersion = getSceneVersion(elements);
+    // eslint-disable-next-line no-console
+    console.debug("[saveToHttpStorage] Already saved:", {
+      cachedVersion,
+      currentVersion,
+      roomId,
+    });
     return false;
   }
 
   const sceneVersion = getSceneVersion(elements);
-  const getResponse = await fetch(
-    `${HTTP_STORAGE_BACKEND_URL}/rooms/${roomId}`,
-  );
+  let getResponse: Response;
 
-  if (!getResponse.ok && getResponse.status !== 404) {
+  try {
+    getResponse = await fetch(`${HTTP_STORAGE_BACKEND_URL}/rooms/${roomId}`);
+  } catch (error: any) {
+    // eslint-disable-next-line no-console
+    console.error("[saveToHttpStorage] Fetch failed:", error);
     return false;
   }
+
+  if (!getResponse.ok && getResponse.status !== 404) {
+    // eslint-disable-next-line no-console
+    console.warn("[saveToHttpStorage] GET request failed:", {
+      status: getResponse.status,
+      statusText: getResponse.statusText,
+      roomId,
+    });
+    return false;
+  }
+
   if (getResponse.status === 404) {
+    // 新房间，直接保存
     const result: boolean = await saveElementsToBackend(
       roomKey,
       roomId,
@@ -143,18 +172,30 @@ export const saveToHttpStorage = async (
     );
     if (result) {
       httpStorageSceneVersionCache.set(socket, sceneVersion);
+      // eslint-disable-next-line no-console
+      console.debug("[saveToHttpStorage] New room saved:", {
+        roomId,
+        sceneVersion,
+      });
       return elements; // saved new room, return elements as stored
     }
-    return false;
-  }
-  // If room already exist, we compare scene versions to check
-  // if we're up to date before saving our scene
-  const buffer = await getResponse.arrayBuffer();
-  const sceneVersionFromRequest = parseSceneVersionFromRequest(buffer);
-  if (sceneVersionFromRequest >= sceneVersion) {
+    // eslint-disable-next-line no-console
+    console.warn("[saveToHttpStorage] Failed to save new room:", { roomId });
     return false;
   }
 
+  // 房间已存在，比较版本号
+  const buffer = await getResponse.arrayBuffer();
+  const sceneVersionFromRequest = parseSceneVersionFromRequest(buffer);
+
+  // eslint-disable-next-line no-console
+  console.debug("[saveToHttpStorage] Version comparison:", {
+    roomId,
+    localVersion: sceneVersion,
+    remoteVersion: sceneVersionFromRequest,
+  });
+
+  // 先进行 reconcile，合并本地和远程的元素
   const existingElements = await getElementsFromBuffer(buffer, roomKey);
   const reconciledElements = getSyncableElements(
     reconcileElements(
@@ -164,17 +205,71 @@ export const saveToHttpStorage = async (
     ),
   );
 
+  // 计算 reconcile 后的版本号
+  const reconciledVersion = getSceneVersion(reconciledElements);
+
+  // 计算远程 syncable 元素的版本号（用于公平比较）
+  // existingElements 已经是 OrderedExcalidrawElement[] 类型（从 getElementsFromBuffer 返回）
+  const remoteSyncableElements = getSyncableElements(
+    existingElements as OrderedExcalidrawElement[],
+  );
+  const remoteSyncableVersion = getSceneVersion(remoteSyncableElements);
+
+  // 检查 reconcile 后的元素是否与远程元素不同
+  // 通过比较版本号来判断是否有变化
+  const hasChanges = reconciledVersion !== remoteSyncableVersion;
+
+  // eslint-disable-next-line no-console
+  console.debug("[saveToHttpStorage] After reconcile:", {
+    roomId,
+    originalLocalVersion: sceneVersion,
+    remoteVersion: sceneVersionFromRequest,
+    reconciledVersion,
+    remoteSyncableVersion,
+    hasChanges,
+  });
+
+  // 如果 reconcile 后的版本号与远程 syncable 版本号相同，说明没有变化
+  if (!hasChanges) {
+    // 没有变化，不需要保存
+    // 更新缓存为远程版本号（基于所有元素），用于后续比较
+    httpStorageSceneVersionCache.set(socket, sceneVersionFromRequest);
+    // eslint-disable-next-line no-console
+    console.debug(
+      "[saveToHttpStorage] No changes after reconcile, skipping save",
+      {
+        reconciledVersion,
+        remoteSyncableVersion,
+      },
+    );
+    return false;
+  }
+
+  // 使用 reconcile 后的版本号保存
   const result: boolean = await saveElementsToBackend(
     roomKey,
     roomId,
     reconciledElements,
-    sceneVersion,
+    reconciledVersion,
   );
 
   if (result) {
-    httpStorageSceneVersionCache.set(socket, sceneVersion);
+    httpStorageSceneVersionCache.set(socket, reconciledVersion);
+    // eslint-disable-next-line no-console
+    console.debug("[saveToHttpStorage] Room updated successfully:", {
+      roomId,
+      reconciledVersion,
+      originalLocalVersion: sceneVersion,
+      remoteVersion: sceneVersionFromRequest,
+    });
     return reconciledElements as readonly ExcalidrawElement[];
   }
+
+  // eslint-disable-next-line no-console
+  console.warn("[saveToHttpStorage] Failed to update room:", {
+    roomId,
+    reconciledVersion,
+  });
   return false;
 };
 
