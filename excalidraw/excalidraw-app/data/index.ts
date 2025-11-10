@@ -350,6 +350,94 @@ type ExportToBackendResult =
   | { url: null; errorMessage: string }
   | { url: string; errorMessage: null };
 
+/**
+ * 自动保存场景到后端（用于非协同模式，页面关闭/切换时）
+ * 静默保存，不抛出错误，避免阻塞页面关闭
+ */
+export const autoSaveToBackend = async (
+  elements: readonly ExcalidrawElement[],
+  appState: Partial<AppState>,
+  files: BinaryFiles,
+  useBeacon: boolean = false,
+): Promise<void> => {
+  // 如果没有元素，不需要保存
+  if (elements.length === 0) {
+    return;
+  }
+
+  try {
+    const encryptionKey = await generateEncryptionKey("string");
+
+    const payload = await compressData(
+      new TextEncoder().encode(
+        serializeAsJSON(elements, appState, files, "database"),
+      ),
+      { encryptionKey },
+    );
+
+    const filesMap = new Map<FileId, BinaryFileData>();
+    for (const element of elements) {
+      if (isInitializedImageElement(element) && files[element.fileId]) {
+        filesMap.set(element.fileId, files[element.fileId]);
+      }
+    }
+
+    const filesToUpload = await encodeFilesForUpload({
+      files: filesMap,
+      encryptionKey,
+      maxBytes: FILE_UPLOAD_MAX_BYTES,
+    });
+
+    // 使用 sendBeacon 在页面关闭时可靠保存
+    if (useBeacon && navigator.sendBeacon) {
+      const blob = new Blob([payload.buffer as ArrayBuffer], {
+        type: "application/octet-stream",
+      });
+      const sent = navigator.sendBeacon(BACKEND_V2_POST, blob);
+      if (sent && filesToUpload.length > 0) {
+        // 文件上传使用 fetch，但不等待响应
+        const storageBackend = await getStorageBackend();
+        storageBackend
+          .saveFilesToStorageBackend({
+            prefix: `/files/autoSave/${Date.now()}`,
+            files: filesToUpload,
+          })
+          .catch(() => {
+            // 静默失败
+          });
+      }
+      return;
+    }
+
+    // 使用 fetch 保存（异步，不等待响应）
+    fetch(BACKEND_V2_POST, {
+      method: "POST",
+      body: payload.buffer as ArrayBuffer,
+      keepalive: true, // 允许在页面关闭后继续发送
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          return;
+        }
+        const json = await response.json();
+        if (json.id && filesToUpload.length > 0) {
+          const storageBackend = await getStorageBackend();
+          await storageBackend.saveFilesToStorageBackend({
+            prefix: `/files/autoSave/${json.id}`,
+            files: filesToUpload,
+          });
+        }
+      })
+      .catch(() => {
+        // 静默失败，不阻塞页面关闭
+      });
+  } catch (error: any) {
+    // 静默失败，不阻塞页面关闭
+    // eslint-disable-next-line no-console
+    console.debug("Auto-save to backend failed:", error);
+  }
+};
+
 export const exportToBackend = async (
   elements: readonly ExcalidrawElement[],
   appState: Partial<AppState>,

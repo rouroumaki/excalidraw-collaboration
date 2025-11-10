@@ -56,6 +56,7 @@ import Collab, {
 } from "./collab/Collab";
 import {
   exportToBackend,
+  autoSaveToBackend,
   getCollaborationLinkData,
   isCollaborationLink,
   loadScene,
@@ -602,6 +603,21 @@ const ExcalidrawWrapper = () => {
     const visibilityChange = (event: FocusEvent | Event) => {
       if (event.type === EVENT.BLUR || document.hidden) {
         LocalData.flushSave();
+
+        // 非协同模式下，页面隐藏或失去焦点时保存到后端
+        if (
+          !collabAPI?.isCollaborating() &&
+          excalidrawAPI &&
+          (event.type === EVENT.BLUR || document.hidden)
+        ) {
+          const elements = excalidrawAPI.getSceneElements();
+          const appState = excalidrawAPI.getAppState();
+          const files = excalidrawAPI.getFiles();
+          // 异步保存，不阻塞页面切换
+          autoSaveToBackend(elements, appState, files).catch(() => {
+            // 静默失败，不阻塞页面切换
+          });
+        }
       }
       if (
         event.type === EVENT.VISIBILITY_CHANGE ||
@@ -634,6 +650,17 @@ const ExcalidrawWrapper = () => {
     const unloadHandler = (event: BeforeUnloadEvent) => {
       LocalData.flushSave();
 
+      // 非协同模式下，页面关闭时保存到后端
+      if (!collabAPI?.isCollaborating() && excalidrawAPI) {
+        const elements = excalidrawAPI.getSceneElements();
+        const appState = excalidrawAPI.getAppState();
+        const files = excalidrawAPI.getFiles();
+        // 使用 sendBeacon 在页面关闭时可靠保存
+        autoSaveToBackend(elements, appState, files, true).catch(() => {
+          // 静默失败
+        });
+      }
+
       if (
         excalidrawAPI &&
         LocalData.fileStorage.shouldPreventUnload(
@@ -647,7 +674,7 @@ const ExcalidrawWrapper = () => {
     return () => {
       window.removeEventListener(EVENT.BEFORE_UNLOAD, unloadHandler);
     };
-  }, [excalidrawAPI]);
+  }, [excalidrawAPI, collabAPI]);
 
   const onChange = (
     elements: readonly OrderedExcalidrawElement[],
