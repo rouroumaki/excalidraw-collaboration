@@ -2,6 +2,7 @@ import * as dotenv from 'dotenv';
 import { LogLevel } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { HttpLoggingInterceptor } from './http-logging.interceptor';
 
 // 加载 .env 文件
 dotenv.config();
@@ -21,6 +22,7 @@ async function bootstrap() {
   });
 
   app.setGlobalPrefix(process.env.GLOBAL_PREFIX ?? '/api/v2');
+  app.useGlobalInterceptors(new HttpLoggingInterceptor());
 
   await app.listen(process.env.PORT ?? 8080);
 }
